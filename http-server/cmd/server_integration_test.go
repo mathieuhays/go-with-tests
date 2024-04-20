@@ -7,12 +7,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"testing"
 )
 
 func TestRecordingWinsAndRetrievingThem(t *testing.T) {
-	store := http_server.NewInMemoryPlayerStore()
+	database, cleanDatabase := createTempFile(t, `[]`)
+	defer cleanDatabase()
+
+	store, err := http_server.NewFileSystemPlayerStore(database)
+	assertNoError(t, err)
+
 	server := http_server.NewPlayerServer(store)
 	player := "Pepper"
 
@@ -59,6 +65,13 @@ func assertStatus(t testing.TB, got, want int) {
 	}
 }
 
+func assertNoError(t testing.TB, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("didn't expect an error but got one, %v", err)
+	}
+}
+
 func assertResponseBody(t testing.TB, got, want string) {
 	t.Helper()
 	if got != want {
@@ -71,7 +84,7 @@ func newLeagueRequest() *http.Request {
 	return req
 }
 
-func GetLeagueFromResponse(t testing.TB, body io.Reader) (league []http_server.Player) {
+func GetLeagueFromResponse(t testing.TB, body io.Reader) (league http_server.League) {
 	t.Helper()
 	err := json.NewDecoder(body).Decode(&league)
 
@@ -82,9 +95,28 @@ func GetLeagueFromResponse(t testing.TB, body io.Reader) (league []http_server.P
 	return
 }
 
-func assertLeague(t testing.TB, got, want []http_server.Player) {
+func assertLeague(t testing.TB, got, want http_server.League) {
 	t.Helper()
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v want %v", got, want)
 	}
+}
+
+func createTempFile(t testing.TB, initialData string) (*os.File, func()) {
+	t.Helper()
+
+	tmpfile, err := os.CreateTemp("", "db")
+
+	if err != nil {
+		t.Fatalf("could not create temp file %v", err)
+	}
+
+	tmpfile.Write([]byte(initialData))
+
+	removeFile := func() {
+		_ = tmpfile.Close()
+		_ = os.Remove(tmpfile.Name())
+	}
+
+	return tmpfile, removeFile
 }

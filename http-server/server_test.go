@@ -1,7 +1,6 @@
 package http_server
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -128,7 +127,7 @@ func assertResponseBody(t testing.TB, got, want string) {
 
 func GetLeagueFromResponse(t testing.TB, body io.Reader) (league []Player) {
 	t.Helper()
-	err := json.NewDecoder(body).Decode(&league)
+	league, err := NewLeague(body)
 
 	if err != nil {
 		t.Fatalf("Unable to parse response from server %q into slice of Player, '%v'", body, err)
@@ -159,7 +158,7 @@ func assertContentType(t testing.TB, response *httptest.ResponseRecorder, want s
 type StubPlayerStore struct {
 	scores   map[string]int
 	winCalls []string
-	league   []Player
+	league   League
 }
 
 func (s *StubPlayerStore) GetPlayerScore(name string) int {
@@ -171,6 +170,6 @@ func (s *StubPlayerStore) RecordWin(name string) {
 	s.winCalls = append(s.winCalls, name)
 }
 
-func (s *StubPlayerStore) GetLeague() []Player {
+func (s *StubPlayerStore) GetLeague() League {
 	return s.league
 }
