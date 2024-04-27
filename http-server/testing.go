@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 )
 
-func AssertStatus(t testing.TB, got, want int) {
+func AssertStatus(t testing.TB, response *httptest.ResponseRecorder, want int) {
 	t.Helper()
+	got := response.Code
 	if got != want {
 		t.Errorf("did not get correct status, got %d, want %d", got, want)
 	}
@@ -56,6 +58,11 @@ func NewLeagueRequest() *http.Request {
 	return req
 }
 
+func NewGameRequest() *http.Request {
+	req, _ := http.NewRequest(http.MethodGet, "/game", nil)
+	return req
+}
+
 func AssertContentType(t testing.TB, response *httptest.ResponseRecorder, want string) {
 	t.Helper()
 	if response.Result().Header.Get("content-type") != want {
@@ -92,4 +99,71 @@ func (s *StubPlayerStore) RecordWin(name string) {
 
 func (s *StubPlayerStore) GetLeague() League {
 	return s.league
+}
+
+type GameSpy struct {
+	StartCalled     bool
+	StartCalledWith int
+	BlindAlert      []byte
+
+	FinishCalled     bool
+	FinishCalledWith string
+}
+
+func (g *GameSpy) Start(numberOfPlayers int, out io.Writer) {
+	g.StartCalled = true
+	g.StartCalledWith = numberOfPlayers
+	_, _ = out.Write(g.BlindAlert)
+}
+
+func (g *GameSpy) Finish(winner string) {
+	g.FinishCalledWith = winner
+}
+
+func AssertGameStartedWith(t testing.TB, game *GameSpy, want int) {
+	t.Helper()
+
+	passed := retryUntil(500*time.Millisecond, func() bool {
+		return game.StartCalledWith == want
+	})
+
+	if !passed {
+		t.Errorf("wanted Start called with %d, got %d", want, game.StartCalledWith)
+	}
+}
+
+func AssertGameNotFinished(t testing.TB, game *GameSpy) {
+	t.Helper()
+	if game.FinishCalled {
+		t.Errorf("game should not have finished")
+	}
+}
+
+func AssertGameNotStarted(t testing.TB, game *GameSpy) {
+	t.Helper()
+	if game.StartCalled {
+		t.Errorf("game should not have started")
+	}
+}
+
+func AssertFinishCalledWith(t testing.TB, game *GameSpy, want string) {
+	t.Helper()
+
+	passed := retryUntil(500*time.Millisecond, func() bool {
+		return game.FinishCalledWith == want
+	})
+
+	if !passed {
+		t.Errorf("expected finish called with %q but got %q", want, game.FinishCalledWith)
+	}
+}
+
+func retryUntil(d time.Duration, f func() bool) bool {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if f() {
+			return true
+		}
+	}
+	return false
 }
